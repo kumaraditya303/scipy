@@ -122,16 +122,8 @@ def spline_filter1d(input, order=3, axis=-1, output=np.float64,
     output = _ni_support._get_output(output, input,
                                      complex_output=complex_output)
     if complex_output:
-        # Avoid writing through `output.real`/`output.imag`, which are
-        # read-only views under NumPy's freeze-on-view mode; filter the real
-        # and imaginary parts into real-valued temporaries and combine them
-        # with a single freeze-safe slice assignment.
-        real_dtype = np.finfo(output.dtype).dtype
-        re = _ni_support._get_output(real_dtype, output)
-        im = _ni_support._get_output(real_dtype, output)
-        spline_filter1d(input.real, order, axis, re, mode)
-        spline_filter1d(input.imag, order, axis, im, mode)
-        output[...] = re + 1j * im
+        spline_filter1d(input.real, order, axis, output.real, mode)
+        spline_filter1d(input.imag, order, axis, output.imag, mode)
         return output
     if order in [0, 1]:
         output[...] = np.array(input)
@@ -205,16 +197,8 @@ def spline_filter(input, order=3, output=np.float64, mode='mirror'):
     output = _ni_support._get_output(output, input,
                                      complex_output=complex_output)
     if complex_output:
-        # Avoid writing through `output.real`/`output.imag`, which are
-        # read-only views under NumPy's freeze-on-view mode; filter the real
-        # and imaginary parts into real-valued temporaries and combine them
-        # with a single freeze-safe slice assignment.
-        real_dtype = np.finfo(output.dtype).dtype
-        re = _ni_support._get_output(real_dtype, output)
-        im = _ni_support._get_output(real_dtype, output)
-        spline_filter(input.real, order, re, mode)
-        spline_filter(input.imag, order, im, mode)
-        output[...] = re + 1j * im
+        spline_filter(input.real, order, output.real, mode)
+        spline_filter(input.imag, order, output.imag, mode)
         return output
     if order not in [0, 1] and input.ndim > 0:
         for axis in range(input.ndim):
@@ -367,16 +351,10 @@ def geometric_transform(input, mapping, output_shape=None,
                       output_shape=output_shape,
                       extra_arguments=extra_arguments,
                       extra_keywords=extra_keywords)
-        # Avoid writing through `output.real`/`output.imag`, which are
-        # read-only views under NumPy's freeze-on-view mode.
-        real_dtype = np.finfo(output.dtype).dtype
-        re = _ni_support._get_output(real_dtype, output)
-        im = _ni_support._get_output(real_dtype, output)
-        geometric_transform(input.real, mapping, output=re,
+        geometric_transform(input.real, mapping, output=output.real,
                             cval=np.real(cval), **kwargs)
-        geometric_transform(input.imag, mapping, output=im,
+        geometric_transform(input.imag, mapping, output=output.imag,
                             cval=np.imag(cval), **kwargs)
-        output[...] = re + 1j * im
         return output
 
     if prefilter and order > 1:
@@ -481,16 +459,10 @@ def map_coordinates(input, coordinates, output=None, order=3,
                                      complex_output=complex_output)
     if complex_output:
         kwargs = dict(order=order, mode=mode, prefilter=prefilter)
-        # Avoid writing through `output.real`/`output.imag`, which are
-        # read-only views under NumPy's freeze-on-view mode.
-        real_dtype = np.finfo(output.dtype).dtype
-        re = _ni_support._get_output(real_dtype, output)
-        im = _ni_support._get_output(real_dtype, output)
-        map_coordinates(input.real, coordinates, output=re,
+        map_coordinates(input.real, coordinates, output=output.real,
                         cval=np.real(cval), **kwargs)
-        map_coordinates(input.imag, coordinates, output=im,
+        map_coordinates(input.imag, coordinates, output=output.imag,
                         cval=np.imag(cval), **kwargs)
-        output[...] = re + 1j * im
         return output
     if prefilter and order > 1:
         padded, npad = _prepad_for_spline_filter(input, mode, cval)
@@ -634,16 +606,10 @@ def affine_transform(input, matrix, offset=0.0, output_shape=None,
     if complex_output:
         kwargs = dict(offset=offset, output_shape=output_shape, order=order,
                       mode=mode, prefilter=prefilter)
-        # Avoid writing through `output.real`/`output.imag`, which are
-        # read-only views under NumPy's freeze-on-view mode.
-        real_dtype = np.finfo(output.dtype).dtype
-        re = _ni_support._get_output(real_dtype, output)
-        im = _ni_support._get_output(real_dtype, output)
-        affine_transform(input.real, matrix, output=re,
+        affine_transform(input.real, matrix, output=output.real,
                          cval=np.real(cval), **kwargs)
-        affine_transform(input.imag, matrix, output=im,
+        affine_transform(input.imag, matrix, output=output.imag,
                          cval=np.imag(cval), **kwargs)
-        output[...] = re + 1j * im
         return output
     if prefilter and order > 1:
         padded, npad = _prepad_for_spline_filter(input, mode, cval)
@@ -774,14 +740,10 @@ def shift(input, shift, output=None, order=3, mode='constant', cval=0.0,
         from scipy.ndimage._interpolation import shift as _shift
 
         kwargs = dict(order=order, mode=mode, prefilter=prefilter)
-        # Avoid writing through `output.real`/`output.imag`, which are
-        # read-only views under NumPy's freeze-on-view mode.
-        real_dtype = np.finfo(output.dtype).dtype
-        re = _ni_support._get_output(real_dtype, output)
-        im = _ni_support._get_output(real_dtype, output)
-        _shift(input.real, shift, output=re, cval=np.real(cval), **kwargs)
-        _shift(input.imag, shift, output=im, cval=np.imag(cval), **kwargs)
-        output[...] = re + 1j * im
+        _shift(input.real, shift, output=output.real, cval=np.real(cval),
+               **kwargs)
+        _shift(input.imag, shift, output=output.imag, cval=np.imag(cval),
+               **kwargs)
         return output
     if prefilter and order > 1:
         padded, npad = _prepad_for_spline_filter(input, mode, cval)
@@ -893,14 +855,10 @@ def zoom(input, zoom, output=None, order=3, mode='constant', cval=0.0,
         from scipy.ndimage._interpolation import zoom as _zoom
 
         kwargs = dict(order=order, mode=mode, prefilter=prefilter)
-        # Avoid writing through `output.real`/`output.imag`, which are
-        # read-only views under NumPy's freeze-on-view mode.
-        real_dtype = np.finfo(output.dtype).dtype
-        re = _ni_support._get_output(real_dtype, output)
-        im = _ni_support._get_output(real_dtype, output)
-        _zoom(input.real, zoom, output=re, cval=np.real(cval), **kwargs)
-        _zoom(input.imag, zoom, output=im, cval=np.imag(cval), **kwargs)
-        output[...] = re + 1j * im
+        _zoom(input.real, zoom, output=output.real, cval=np.real(cval),
+              **kwargs)
+        _zoom(input.imag, zoom, output=output.imag, cval=np.imag(cval),
+              **kwargs)
         return output
     if prefilter and order > 1:
         padded, npad = _prepad_for_spline_filter(input, mode, cval)

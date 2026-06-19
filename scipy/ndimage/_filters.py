@@ -492,36 +492,28 @@ def _complex_via_real_components(func, input, weights, output, cval, **kwargs):
     """Complex convolution via a linear combination of real convolutions."""
     complex_input = input.dtype.kind == 'c'
     complex_weights = weights.dtype.kind == 'c'
-    # Compute the real and imaginary components separately and combine them
-    # at the end. Writing through `output.real`/`output.imag` would create
-    # views of `output`, which are read-only under NumPy's freeze-on-view
-    # mode; a single slice assignment into `output` is freeze-safe. The
-    # components are computed at `output`'s real dtype to match the precision
-    # of the previous in-place `output.real`/`output.imag` writes.
-    real_dtype = np.finfo(output.dtype).dtype
     if complex_input and complex_weights:
         # real component of the output
-        re = func(input.real, weights.real, output=real_dtype,
-                  cval=np.real(cval), **kwargs)
-        re -= func(input.imag, weights.imag, output=None,
-                   cval=np.imag(cval), **kwargs)
+        func(input.real, weights.real, output=output.real,
+             cval=np.real(cval), **kwargs)
+        output.real -= func(input.imag, weights.imag, output=None,
+                            cval=np.imag(cval), **kwargs)
         # imaginary component of the output
-        im = func(input.real, weights.imag, output=real_dtype,
-                  cval=np.real(cval), **kwargs)
-        im += func(input.imag, weights.real, output=None,
-                   cval=np.imag(cval), **kwargs)
+        func(input.real, weights.imag, output=output.imag,
+             cval=np.real(cval), **kwargs)
+        output.imag += func(input.imag, weights.real, output=None,
+                            cval=np.imag(cval), **kwargs)
     elif complex_input:
-        re = func(input.real, weights, output=real_dtype, cval=np.real(cval),
-                  **kwargs)
-        im = func(input.imag, weights, output=real_dtype, cval=np.imag(cval),
-                  **kwargs)
+        func(input.real, weights, output=output.real, cval=np.real(cval),
+             **kwargs)
+        func(input.imag, weights, output=output.imag, cval=np.imag(cval),
+             **kwargs)
     else:
         if np.iscomplexobj(cval):
             raise ValueError("Cannot provide a complex-valued cval when the "
                              "input is real.")
-        re = func(input, weights.real, output=real_dtype, cval=cval, **kwargs)
-        im = func(input, weights.imag, output=real_dtype, cval=cval, **kwargs)
-    output[...] = re + 1j * im
+        func(input, weights.real, output=output.real, cval=cval, **kwargs)
+        func(input, weights.imag, output=output.imag, cval=cval, **kwargs)
     return output
 
 
@@ -1554,20 +1546,10 @@ def uniform_filter1d(input, size, axis=-1, output=None,
         _nd_image.uniform_filter1d(input, size, axis, output, mode, cval,
                                    origin)
     else:
-        # Writing through `output.real`/`output.imag` creates views of
-        # `output`, which are read-only under NumPy's freeze-on-view mode.
-        # Filter the real and imaginary parts into separate real-valued
-        # temporaries (at `output`'s real dtype, to match the precision of
-        # the previous in-place writes) and combine them with a single
-        # freeze-safe slice assignment.
-        real_dtype = np.finfo(output.dtype).dtype
-        re = _ni_support._get_output(real_dtype, input)
-        im = _ni_support._get_output(real_dtype, input)
-        _nd_image.uniform_filter1d(input.real, size, axis, re, mode,
+        _nd_image.uniform_filter1d(input.real, size, axis, output.real, mode,
                                    np.real(cval), origin)
-        _nd_image.uniform_filter1d(input.imag, size, axis, im, mode,
+        _nd_image.uniform_filter1d(input.imag, size, axis, output.imag, mode,
                                    np.imag(cval), origin)
-        output[...] = re + 1j * im
     return output
 
 
