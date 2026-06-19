@@ -2597,7 +2597,7 @@ def distance_transform_edt(input, sampling=None, return_distances=True,
         dt = dt.astype(np.float64)
         if sampling is not None:
             for ii in range(len(sampling)):
-                dt[ii, ...] = dt[ii, ...] * sampling[ii]
+                dt[ii, ...] *= sampling[ii]
         np.multiply(dt, dt, dt)
         if dt_inplace:
             dt = np.add.reduce(dt, axis=0)
