@@ -740,10 +740,8 @@ def shift(input, shift, output=None, order=3, mode='constant', cval=0.0,
         from scipy.ndimage._interpolation import shift as _shift
 
         kwargs = dict(order=order, mode=mode, prefilter=prefilter)
-        _shift(input.real, shift, output=output.real, cval=np.real(cval),
-               **kwargs)
-        _shift(input.imag, shift, output=output.imag, cval=np.imag(cval),
-               **kwargs)
+        _shift(input.real, shift, output=output.real, cval=np.real(cval), **kwargs)
+        _shift(input.imag, shift, output=output.imag, cval=np.imag(cval), **kwargs)
         return output
     if prefilter and order > 1:
         padded, npad = _prepad_for_spline_filter(input, mode, cval)
@@ -855,10 +853,8 @@ def zoom(input, zoom, output=None, order=3, mode='constant', cval=0.0,
         from scipy.ndimage._interpolation import zoom as _zoom
 
         kwargs = dict(order=order, mode=mode, prefilter=prefilter)
-        _zoom(input.real, zoom, output=output.real, cval=np.real(cval),
-              **kwargs)
-        _zoom(input.imag, zoom, output=output.imag, cval=np.imag(cval),
-              **kwargs)
+        _zoom(input.real, zoom, output=output.real, cval=np.real(cval), **kwargs)
+        _zoom(input.imag, zoom, output=output.imag, cval=np.imag(cval), **kwargs)
         return output
     if prefilter and order > 1:
         padded, npad = _prepad_for_spline_filter(input, mode, cval)
