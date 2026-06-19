@@ -160,13 +160,16 @@ def _vectorized_filter_iv(input, function, size, footprint, output, mode, cval, 
     # For simplicity, work with `axes` at the end.
     working_axes = tuple(range(-n_axes, 0))
     input = xp.moveaxis(input, axes, working_axes)
-    output = (xp.moveaxis(output, axes, working_axes)
-              if output is not None else output)
+    # NB: we deliberately do *not* take a moved-axis view of `output` to write
+    # into -- such a view is read-only under NumPy's freeze-on-view mode.
+    # `wrapped_function` fills a freshly allocated (writeable) array instead, and
+    # `vectorized_filter` writes the result back into `output` (in its original
+    # axis order) using a freeze-safe slice assignment.
 
-    # Wrap the function to limit maximum memory usage, deal with `footprint`,
-    # and populate `output`. The latter requires some verbosity because we
-    # don't know the output dtype.
-    def wrapped_function(view, output=output):
+    # Wrap the function to limit maximum memory usage and deal with `footprint`.
+    # The result is always a freshly allocated array; the caller is responsible
+    # for writing it back into a user-provided `output`.
+    def wrapped_function(view):
         kwargs = {'axis': working_axes}
 
         if working_axes == ():
@@ -179,26 +182,20 @@ def _vectorized_filter_iv(input, function, size, footprint, output, mode, cval, 
             raise ValueError("`batch_memory` is insufficient for minimum chunk size.")
 
         elif slices_per_batch == view.shape[0]:
-            if output is None:
-                return footprinted_function(xp.asarray(view), **kwargs)
-            else:
-                output[...] = footprinted_function(xp.asarray(view), **kwargs)
-                return output
+            return footprinted_function(xp.asarray(view), **kwargs)
 
+        output = None
         for i in range(0, view.shape[0], slices_per_batch):
             i2 = min(i + slices_per_batch, view.shape[0])
+            # Look at the dtype before allocating the array. (In a follow-up, we
+            # can also look at the shape to support non-scalar elements.)
+            temp = footprinted_function(xp.asarray(view[i:i2]), **kwargs)
             if output is None:
-                # Look at the dtype before allocating the array. (In a follow-up, we
-                # can also look at the shape to support non-scalar elements.)
-                temp = footprinted_function(xp.asarray(view[i:i2]), **kwargs)
                 output = xp.empty(view.shape[:-n_axes], dtype=temp.dtype)
-                output[i:i2, ...] = temp
-            else:
-                output[i:i2, ...] = footprinted_function(xp.asarray(view[i:i2]),
-                                                         **kwargs)
+            output[i:i2, ...] = temp
         return output
 
-    return (input, wrapped_function, size, mode, cval, origin,
+    return (input, wrapped_function, output, size, mode, cval, origin,
             working_axes, axes, n_axes, n_batch, xp)
 
 
@@ -431,9 +428,9 @@ def vectorized_filter(input, function, *, size=None, footprint=None, output=None
 
     """  # noqa: E501
 
-    (input, function, size, mode, cval, origin, working_axes, axes, n_axes, n_batch, xp
-     ) = _vectorized_filter_iv(input, function, size, footprint, output, mode, cval,
-        origin, axes, batch_memory)
+    (input, function, output, size, mode, cval, origin, working_axes, axes, n_axes,
+     n_batch, xp) = _vectorized_filter_iv(input, function, size, footprint, output,
+        mode, cval, origin, axes, batch_memory)
 
     # `np.pad`/`cp.pad` raises with these sorts of cases, but the best result is
     # probably to return the original array. It could be argued that we should call
@@ -477,7 +474,14 @@ def vectorized_filter(input, function, *, size=None, footprint=None, output=None
     res = function(view)
 
     # move working_axes back to original positions
-    return xp.moveaxis(res, working_axes, axes)
+    res = xp.moveaxis(res, working_axes, axes)
+    if output is not None:
+        # Populate the user-provided output array with a freeze-safe slice
+        # assignment. (Writing through a moved-axis view of `output` would fail
+        # because views are read-only under NumPy's freeze-on-view mode.)
+        output[...] = res
+        return output
+    return res
 
 
 def _invalid_origin(origin, lenw):
@@ -488,28 +492,36 @@ def _complex_via_real_components(func, input, weights, output, cval, **kwargs):
     """Complex convolution via a linear combination of real convolutions."""
     complex_input = input.dtype.kind == 'c'
     complex_weights = weights.dtype.kind == 'c'
+    # Compute the real and imaginary components separately and combine them
+    # at the end. Writing through `output.real`/`output.imag` would create
+    # views of `output`, which are read-only under NumPy's freeze-on-view
+    # mode; a single slice assignment into `output` is freeze-safe. The
+    # components are computed at `output`'s real dtype to match the precision
+    # of the previous in-place `output.real`/`output.imag` writes.
+    real_dtype = np.finfo(output.dtype).dtype
     if complex_input and complex_weights:
         # real component of the output
-        func(input.real, weights.real, output=output.real,
-             cval=np.real(cval), **kwargs)
-        output.real -= func(input.imag, weights.imag, output=None,
-                            cval=np.imag(cval), **kwargs)
+        re = func(input.real, weights.real, output=real_dtype,
+                  cval=np.real(cval), **kwargs)
+        re -= func(input.imag, weights.imag, output=None,
+                   cval=np.imag(cval), **kwargs)
         # imaginary component of the output
-        func(input.real, weights.imag, output=output.imag,
-             cval=np.real(cval), **kwargs)
-        output.imag += func(input.imag, weights.real, output=None,
-                            cval=np.imag(cval), **kwargs)
+        im = func(input.real, weights.imag, output=real_dtype,
+                  cval=np.real(cval), **kwargs)
+        im += func(input.imag, weights.real, output=None,
+                   cval=np.imag(cval), **kwargs)
     elif complex_input:
-        func(input.real, weights, output=output.real, cval=np.real(cval),
-             **kwargs)
-        func(input.imag, weights, output=output.imag, cval=np.imag(cval),
-             **kwargs)
+        re = func(input.real, weights, output=real_dtype, cval=np.real(cval),
+                  **kwargs)
+        im = func(input.imag, weights, output=real_dtype, cval=np.imag(cval),
+                  **kwargs)
     else:
         if np.iscomplexobj(cval):
             raise ValueError("Cannot provide a complex-valued cval when the "
                              "input is real.")
-        func(input, weights.real, output=output.real, cval=cval, **kwargs)
-        func(input, weights.imag, output=output.imag, cval=cval, **kwargs)
+        re = func(input, weights.real, output=real_dtype, cval=cval, **kwargs)
+        im = func(input, weights.imag, output=real_dtype, cval=cval, **kwargs)
+    output[...] = re + 1j * im
     return output
 
 
@@ -1542,10 +1554,20 @@ def uniform_filter1d(input, size, axis=-1, output=None,
         _nd_image.uniform_filter1d(input, size, axis, output, mode, cval,
                                    origin)
     else:
-        _nd_image.uniform_filter1d(input.real, size, axis, output.real, mode,
+        # Writing through `output.real`/`output.imag` creates views of
+        # `output`, which are read-only under NumPy's freeze-on-view mode.
+        # Filter the real and imaginary parts into separate real-valued
+        # temporaries (at `output`'s real dtype, to match the precision of
+        # the previous in-place writes) and combine them with a single
+        # freeze-safe slice assignment.
+        real_dtype = np.finfo(output.dtype).dtype
+        re = _ni_support._get_output(real_dtype, input)
+        im = _ni_support._get_output(real_dtype, input)
+        _nd_image.uniform_filter1d(input.real, size, axis, re, mode,
                                    np.real(cval), origin)
-        _nd_image.uniform_filter1d(input.imag, size, axis, output.imag, mode,
+        _nd_image.uniform_filter1d(input.imag, size, axis, im, mode,
                                    np.imag(cval), origin)
+        output[...] = re + 1j * im
     return output
 
 

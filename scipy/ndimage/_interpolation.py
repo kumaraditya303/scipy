@@ -122,8 +122,16 @@ def spline_filter1d(input, order=3, axis=-1, output=np.float64,
     output = _ni_support._get_output(output, input,
                                      complex_output=complex_output)
     if complex_output:
-        spline_filter1d(input.real, order, axis, output.real, mode)
-        spline_filter1d(input.imag, order, axis, output.imag, mode)
+        # Avoid writing through `output.real`/`output.imag`, which are
+        # read-only views under NumPy's freeze-on-view mode; filter the real
+        # and imaginary parts into real-valued temporaries and combine them
+        # with a single freeze-safe slice assignment.
+        real_dtype = np.finfo(output.dtype).dtype
+        re = _ni_support._get_output(real_dtype, output)
+        im = _ni_support._get_output(real_dtype, output)
+        spline_filter1d(input.real, order, axis, re, mode)
+        spline_filter1d(input.imag, order, axis, im, mode)
+        output[...] = re + 1j * im
         return output
     if order in [0, 1]:
         output[...] = np.array(input)
@@ -197,8 +205,16 @@ def spline_filter(input, order=3, output=np.float64, mode='mirror'):
     output = _ni_support._get_output(output, input,
                                      complex_output=complex_output)
     if complex_output:
-        spline_filter(input.real, order, output.real, mode)
-        spline_filter(input.imag, order, output.imag, mode)
+        # Avoid writing through `output.real`/`output.imag`, which are
+        # read-only views under NumPy's freeze-on-view mode; filter the real
+        # and imaginary parts into real-valued temporaries and combine them
+        # with a single freeze-safe slice assignment.
+        real_dtype = np.finfo(output.dtype).dtype
+        re = _ni_support._get_output(real_dtype, output)
+        im = _ni_support._get_output(real_dtype, output)
+        spline_filter(input.real, order, re, mode)
+        spline_filter(input.imag, order, im, mode)
+        output[...] = re + 1j * im
         return output
     if order not in [0, 1] and input.ndim > 0:
         for axis in range(input.ndim):
@@ -351,10 +367,16 @@ def geometric_transform(input, mapping, output_shape=None,
                       output_shape=output_shape,
                       extra_arguments=extra_arguments,
                       extra_keywords=extra_keywords)
-        geometric_transform(input.real, mapping, output=output.real,
+        # Avoid writing through `output.real`/`output.imag`, which are
+        # read-only views under NumPy's freeze-on-view mode.
+        real_dtype = np.finfo(output.dtype).dtype
+        re = _ni_support._get_output(real_dtype, output)
+        im = _ni_support._get_output(real_dtype, output)
+        geometric_transform(input.real, mapping, output=re,
                             cval=np.real(cval), **kwargs)
-        geometric_transform(input.imag, mapping, output=output.imag,
+        geometric_transform(input.imag, mapping, output=im,
                             cval=np.imag(cval), **kwargs)
+        output[...] = re + 1j * im
         return output
 
     if prefilter and order > 1:
@@ -459,10 +481,16 @@ def map_coordinates(input, coordinates, output=None, order=3,
                                      complex_output=complex_output)
     if complex_output:
         kwargs = dict(order=order, mode=mode, prefilter=prefilter)
-        map_coordinates(input.real, coordinates, output=output.real,
+        # Avoid writing through `output.real`/`output.imag`, which are
+        # read-only views under NumPy's freeze-on-view mode.
+        real_dtype = np.finfo(output.dtype).dtype
+        re = _ni_support._get_output(real_dtype, output)
+        im = _ni_support._get_output(real_dtype, output)
+        map_coordinates(input.real, coordinates, output=re,
                         cval=np.real(cval), **kwargs)
-        map_coordinates(input.imag, coordinates, output=output.imag,
+        map_coordinates(input.imag, coordinates, output=im,
                         cval=np.imag(cval), **kwargs)
+        output[...] = re + 1j * im
         return output
     if prefilter and order > 1:
         padded, npad = _prepad_for_spline_filter(input, mode, cval)
@@ -606,10 +634,16 @@ def affine_transform(input, matrix, offset=0.0, output_shape=None,
     if complex_output:
         kwargs = dict(offset=offset, output_shape=output_shape, order=order,
                       mode=mode, prefilter=prefilter)
-        affine_transform(input.real, matrix, output=output.real,
+        # Avoid writing through `output.real`/`output.imag`, which are
+        # read-only views under NumPy's freeze-on-view mode.
+        real_dtype = np.finfo(output.dtype).dtype
+        re = _ni_support._get_output(real_dtype, output)
+        im = _ni_support._get_output(real_dtype, output)
+        affine_transform(input.real, matrix, output=re,
                          cval=np.real(cval), **kwargs)
-        affine_transform(input.imag, matrix, output=output.imag,
+        affine_transform(input.imag, matrix, output=im,
                          cval=np.imag(cval), **kwargs)
+        output[...] = re + 1j * im
         return output
     if prefilter and order > 1:
         padded, npad = _prepad_for_spline_filter(input, mode, cval)
@@ -740,8 +774,14 @@ def shift(input, shift, output=None, order=3, mode='constant', cval=0.0,
         from scipy.ndimage._interpolation import shift as _shift
 
         kwargs = dict(order=order, mode=mode, prefilter=prefilter)
-        _shift(input.real, shift, output=output.real, cval=np.real(cval), **kwargs)
-        _shift(input.imag, shift, output=output.imag, cval=np.imag(cval), **kwargs)
+        # Avoid writing through `output.real`/`output.imag`, which are
+        # read-only views under NumPy's freeze-on-view mode.
+        real_dtype = np.finfo(output.dtype).dtype
+        re = _ni_support._get_output(real_dtype, output)
+        im = _ni_support._get_output(real_dtype, output)
+        _shift(input.real, shift, output=re, cval=np.real(cval), **kwargs)
+        _shift(input.imag, shift, output=im, cval=np.imag(cval), **kwargs)
+        output[...] = re + 1j * im
         return output
     if prefilter and order > 1:
         padded, npad = _prepad_for_spline_filter(input, mode, cval)
@@ -853,8 +893,14 @@ def zoom(input, zoom, output=None, order=3, mode='constant', cval=0.0,
         from scipy.ndimage._interpolation import zoom as _zoom
 
         kwargs = dict(order=order, mode=mode, prefilter=prefilter)
-        _zoom(input.real, zoom, output=output.real, cval=np.real(cval), **kwargs)
-        _zoom(input.imag, zoom, output=output.imag, cval=np.imag(cval), **kwargs)
+        # Avoid writing through `output.real`/`output.imag`, which are
+        # read-only views under NumPy's freeze-on-view mode.
+        real_dtype = np.finfo(output.dtype).dtype
+        re = _ni_support._get_output(real_dtype, output)
+        im = _ni_support._get_output(real_dtype, output)
+        _zoom(input.real, zoom, output=re, cval=np.real(cval), **kwargs)
+        _zoom(input.imag, zoom, output=im, cval=np.imag(cval), **kwargs)
+        output[...] = re + 1j * im
         return output
     if prefilter and order > 1:
         padded, npad = _prepad_for_spline_filter(input, mode, cval)
@@ -1027,7 +1073,15 @@ def rotate(input, angle, axes=(1, 0), reshape=True, output=None, order=3,
         for coordinates in planes_coord:
             ia = input_arr[coordinates]
             oa = output[coordinates]
-            affine_transform(ia, rot_matrix, offset, out_plane_shape,
-                             oa, order, mode, cval, prefilter)
+            if oa.flags.writeable:
+                affine_transform(ia, rot_matrix, offset, out_plane_shape,
+                                 oa, order, mode, cval, prefilter)
+            else:
+                # NumPy freeze-on-view: the output plane is a read-only view,
+                # so transform into a fresh array and write it back.
+                oa = affine_transform(ia, rot_matrix, offset, out_plane_shape,
+                                      output.dtype, order, mode, cval,
+                                      prefilter)
+                output[coordinates] = oa
 
     return output

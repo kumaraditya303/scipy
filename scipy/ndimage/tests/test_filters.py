@@ -218,7 +218,10 @@ class TestNdimageFilters:
     @uses_output_array
     @make_xp_test_case(ndimage.correlate1d)
     def test_correlate01_overlap(self, xp):
-        array = xp.reshape(xp.arange(256), (16, 16))
+        # `reshape` returns a view, which is read-only under NumPy's
+        # freeze-on-view mode; copy so `array` owns its data and can be
+        # used as a writeable in-place output.
+        array = xp.asarray(xp.reshape(xp.arange(256), (16, 16)), copy=True)
         weights = xp.asarray([2])
         expected = 2 * array
 
@@ -960,7 +963,10 @@ class TestNdimageFilters:
     @make_xp_test_case(ndimage.gaussian_filter)
     def test_gauss_memory_overlap(self, xp):
         input = xp.arange(100 * 100, dtype=xp.float32)
-        input = xp.reshape(input, (100, 100))
+        # `reshape` returns a view, which is read-only under NumPy's
+        # freeze-on-view mode; copy so `input` owns its data and can be
+        # used as a writeable in-place output.
+        input = xp.asarray(xp.reshape(input, (100, 100)), copy=True)
         output1 = ndimage.gaussian_filter(input, 1.0)
         ndimage.gaussian_filter(input, 1.0, output=input)
         assert_array_almost_equal(output1, input)
@@ -2844,14 +2850,19 @@ def test_gaussian_radius_invalid(xp):
 class TestThreading:
     def check_func_thread(self, n, fun, args, out):
         from threading import Thread
-        thrds = [Thread(target=fun, args=args, kwargs={'output': out[x, ...]})
-                 for x in range(n)]
+        # Assign the result into a row of `out` rather than passing
+        # `out[x, ...]` as `output=`: a row is a view, which is read-only
+        # under NumPy's freeze-on-view mode, whereas slice assignment is
+        # freeze-safe. `fun` still runs concurrently with its own output.
+        def write_row(x):
+            out[x, ...] = fun(*args)
+        thrds = [Thread(target=write_row, args=(x,)) for x in range(n)]
         [t.start() for t in thrds]
         [t.join() for t in thrds]
 
     def check_func_serial(self, n, fun, args, out):
         for i in range(n):
-            fun(*args, output=out[i, ...])
+            out[i, ...] = fun(*args)
 
     @xfail_xp_backends("cupy",
                        reason="XXX thread exception; cannot repro outside of pytest")

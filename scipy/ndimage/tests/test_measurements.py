@@ -1631,14 +1631,15 @@ class TestWatershedIft:
     @skip_xp_backends(np_only=True, reason="inplace ops are numpy-specific")
     def test_watershed_ift07(self, xp):
         shape = (7, 6)
-        data = np.zeros(shape, dtype=np.uint8)
-        data = data.transpose()
-        data[...] = np.asarray([[0, 1, 0, 0, 0, 1, 0],
-                                [0, 1, 0, 0, 0, 1, 0],
-                                [0, 1, 0, 0, 0, 1, 0],
-                                [0, 1, 1, 1, 1, 1, 0],
-                                [0, 0, 0, 0, 0, 0, 0],
-                                [0, 0, 0, 0, 0, 0, 0]], dtype=np.uint8)
+        # Build a transposed (F-contiguous) array without writing through a
+        # view, which is read-only under NumPy's freeze-on-view.
+        data = np.asfortranarray(np.asarray([[0, 1, 0, 0, 0, 1, 0],
+                                             [0, 1, 0, 0, 0, 1, 0],
+                                             [0, 1, 0, 0, 0, 1, 0],
+                                             [0, 1, 1, 1, 1, 1, 0],
+                                             [0, 0, 0, 0, 0, 0, 0],
+                                             [0, 0, 0, 0, 0, 0, 0]],
+                                            dtype=np.uint8))
         data = xp.asarray(data)
         markers = xp.asarray([[-1, 0, 0, 0, 0, 0, 0],
                               [0, 0, 0, 1, 0, 0, 0],
@@ -1646,8 +1647,9 @@ class TestWatershedIft:
                               [0, 0, 0, 0, 0, 0, 0],
                               [0, 0, 0, 0, 0, 0, 0],
                               [0, 0, 0, 0, 0, 0, 0]], dtype=xp.int8)
-        out = xp.zeros(shape, dtype=xp.int16)
-        out = out.T
+        # F-contiguous owning output (a transposed view would be read-only
+        # under NumPy's freeze-on-view).
+        out = np.zeros(shape[::-1], dtype=np.int16, order='F')
         structure=xp.asarray([[1, 1, 1],
                               [1, 1, 1],
                               [1, 1, 1]])

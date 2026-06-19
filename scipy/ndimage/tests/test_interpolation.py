@@ -615,7 +615,9 @@ class TestMapCoordinates:
         try:
             n = 30000
             # a = xp.reshape(xp.empty(n**2, dtype=xp.float32), (n, n))
-            a = np.empty(n**2, dtype=np.float32).reshape(n, n)
+            # Allocate 2-D directly: `reshape` would return a view that is
+            # read-only under NumPy's freeze-on-view.
+            a = np.empty((n, n), dtype=np.float32)
             # fill the part we might read
             a[n - 3:, n - 3:] = 0
             ndimage.map_coordinates(

@@ -2390,18 +2390,27 @@ def distance_transform_cdt(input, metric='chessboard', return_distances=True,
 
     rank = dt.ndim
     if return_indices:
-        ft = np.arange(dt.size, dtype=np.int32).reshape(dt.shape)
+        ft = np.arange(dt.size, dtype=np.int32).reshape(dt.shape).copy()
     else:
         ft = None
 
     _nd_image.distance_transform_op(metric, dt, ft)
-    dt = dt[tuple([slice(None, None, -1)] * rank)]
+    rev = tuple([slice(None, None, -1)] * rank)
+    dt_rev = dt[rev]
+    ft_rev = ft[rev] if return_indices else None
+    if dt_rev.flags.writeable:
+        # second (backward) pass in place on the reversed views
+        _nd_image.distance_transform_op(metric, dt_rev, ft_rev)
+    else:
+        # NumPy freeze-on-view: the reversed views are read-only, so run the
+        # pass on writeable copies and write the result back into dt/ft.
+        dt_rev = dt_rev.copy()
+        ft_rev = ft_rev.copy() if return_indices else None
+        _nd_image.distance_transform_op(metric, dt_rev, ft_rev)
+        dt[...] = dt_rev[rev]
+        if return_indices:
+            ft[...] = ft_rev[rev]
     if return_indices:
-        ft = ft[tuple([slice(None, None, -1)] * rank)]
-    _nd_image.distance_transform_op(metric, dt, ft)
-    dt = dt[tuple([slice(None, None, -1)] * rank)]
-    if return_indices:
-        ft = ft[tuple([slice(None, None, -1)] * rank)]
         ft = np.ravel(ft)
         if ft_inplace:
             if indices.dtype.type != np.int32:
@@ -2588,7 +2597,7 @@ def distance_transform_edt(input, sampling=None, return_distances=True,
         dt = dt.astype(np.float64)
         if sampling is not None:
             for ii in range(len(sampling)):
-                dt[ii, ...] *= sampling[ii]
+                dt[ii, ...] = dt[ii, ...] * sampling[ii]
         np.multiply(dt, dt, dt)
         if dt_inplace:
             dt = np.add.reduce(dt, axis=0)
