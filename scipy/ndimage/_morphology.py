@@ -2390,7 +2390,7 @@ def distance_transform_cdt(input, metric='chessboard', return_distances=True,
 
     rank = dt.ndim
     if return_indices:
-        ft = np.arange(dt.size, dtype=np.int32).reshape(dt.shape).copy()
+        ft = np.arange(dt.size, dtype=np.int32).reshape(dt.shape)
     else:
         ft = None
 

@@ -218,9 +218,6 @@ class TestNdimageFilters:
     @uses_output_array
     @make_xp_test_case(ndimage.correlate1d)
     def test_correlate01_overlap(self, xp):
-        # `reshape` returns a view, which is read-only under NumPy's
-        # freeze-on-view mode; copy so `array` owns its data and can be
-        # used as a writeable in-place output.
         array = xp.asarray(xp.reshape(xp.arange(256), (16, 16)), copy=True)
         weights = xp.asarray([2])
         expected = 2 * array
@@ -2501,7 +2498,7 @@ def test_orders_gauss(xp):
 )
 def test_valid_origins1(xp):
     """Regression test for #1311."""
-    
+
     def func(x):
         return xp.mean(x)
 
@@ -2525,7 +2522,7 @@ def test_valid_origins1(xp):
         make_xp_pytest_param(ndimage.median_filter),
         make_xp_pytest_param(ndimage.minimum_filter1d),
     ],
-)    
+)
 def test_valid_origins2(xp, filter_func):
     """Regression test for #1311."""
     data = xp.asarray([1, 2, 3, 4, 5], dtype=xp.float64)
